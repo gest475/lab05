@@ -6,8 +6,16 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(BUILD_TESTS "Build tests" OFF)
+option(ENABLE_COVERAGE "Enable coverage reporting" OFF)
 
 add_subdirectory(banking)
+
+if(ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(banking INTERFACE -O0 -g --coverage -fprofile-arcs -ftest-coverage)
+        target_link_libraries(banking INTERFACE --coverage)
+    endif()
+endif()
 
 if(BUILD_TESTS)
   enable_testing()

@@ -1,14 +1,60 @@
 language: cpp
+dist: focal
+sudo: required
+
+# Используем матрицу сборки — несколько конфигураций
+matrix:
+  include:
+    # Основная сборка с тестами и покрытием
+    - os: linux
+      compiler: gcc
+      env: BUILD_TYPE=Debug COVERAGE=ON
+    # Дополнительная сборка без покрытия для проверки
+    - os: linux
+      compiler: clang
+      env: BUILD_TYPE=Debug COVERAGE=OFF
+
+before_install:
+  # Обновляем пакеты
+  - sudo apt-get update -qq
+  # Устанавливаем lcov и Python pip
+  - sudo apt-get install -y lcov
+  # Устанавливаем cpp-coveralls для отправки отчёта
+  - sudo pip install cpp-coveralls
+
+install:
+  # Устанавливаем Google Test и Google Mock
+  - sudo apt-get install -y libgtest-dev libgmock-dev
+  # Для Ubuntu сборка gtest из исходников (иногда требуется)
+  - cd /usr/src/gtest && sudo cmake . && sudo make && sudo mv libgtest* /usr/lib/ && cd -
 
 script:
-- cmake -H. -B_build -DCMAKE_INSTALL_PREFIX=_install
-- cmake --build _build
-- cmake --build _build --target install
+  # Создаём папку для сборки
+  - mkdir -p build && cd build
+  # Запускаем CMake с нужными флагами
+  - if [ "$COVERAGE" = "ON" ]; then
+      cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBUILD_TESTS=ON -DENABLE_COVERAGE=ON;
+    else
+      cmake .. -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DBUILD_TESTS=ON;
+    fi
+  # Собираем проект
+  - cmake --build .
+  # Запускаем тесты
+  - ctest --output-on-failure
 
-addons:
-  apt:
-    sources:
-      - george-edison55-precise-backports
-    packages:
-      - cmake
-      - cmake-data
+after_success:
+  # Если включено покрытие, собираем данные и отправляем в Coveralls
+  - if [ "$COVERAGE" = "ON" ]; then
+      cd ${TRAVIS_BUILD_DIR}/build;
+      # Создаём coverage.info
+      lcov --directory . --capture --output-file coverage.info;
+      # Убираем системные файлы и тесты из отчёта
+      lcov --remove coverage.info '/usr/*' '*/tests/*' '*/third-party/*' --output-file coverage.info;
+      # Выводим статистику в лог
+      lcov --list coverage.info;
+      # Отправляем в Coveralls
+      coveralls --root ${TRAVIS_BUILD_DIR} --build-root ${TRAVIS_BUILD_DIR}/build --gcov-options '\-lp' --exclude 'tests' --exclude 'third-party' --verbose;
+    fi
+
+notifications:
+  email: false
